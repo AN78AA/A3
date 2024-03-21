@@ -112,3 +112,4 @@ int main() {
     shmdt(shmstart);
     shmctl(shmid, IPC_RMID, NULL);
 }
+

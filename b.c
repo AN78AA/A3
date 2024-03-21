@@ -15,7 +15,6 @@ double x = 1.0;
 
 int *proc_count;
 sem_t *start_all;
-sem_t *calc_done;
 double *res;
 
 double get_member(int n, double x) {
@@ -38,7 +37,7 @@ void proc(int proc_num) {
     for (i = proc_num; i < SERIES_MEMBER_COUNT; i += NPROCS)
         sums[proc_num] += get_member(i + 1, x);
 
-    sem_post(calc_done);
+    sem_post(start_all);
 }
 
 void master_proc() {
@@ -48,7 +47,7 @@ void master_proc() {
     sem_post(start_all);
 
     for (i = 0; i < NPROCS; i++)
-        sem_wait(calc_done);
+        sem_wait(start_all);
 
     *res = 0;
 
@@ -69,17 +68,25 @@ int main() {
     int shmid;
     void *shmstart;
 
-    shmid = shmget(0x1234, NPROCS * sizeof(double) + 2 * sizeof(int) + 2 * sizeof(sem_t), 0666 | IPC_CREAT);
+    shmid = shmget(IPC_PRIVATE, NPROCS * sizeof(double) + 2 * sizeof(int) + sizeof(sem_t), IPC_CREAT | 0666);
+    if (shmid < 0) {
+        perror("shmget");
+        exit(1);
+    }
+
     shmstart = shmat(shmid, NULL, 0);
+    if (shmstart == (void *) -1) {
+        perror("shmat");
+        exit(1);
+    }
+
     sums = shmstart;
     proc_count = (int*)(shmstart + NPROCS * sizeof(double));
     start_all = (sem_t*)(shmstart + NPROCS * sizeof(double) + sizeof(int));
-    calc_done = (sem_t*)(shmstart + NPROCS * sizeof(double) + sizeof(int) + sizeof(sem_t));
-    res = (double*)(shmstart + NPROCS * sizeof(double) + 2 * sizeof(int) + 2 * sizeof(sem_t));
+    res = (double*)(shmstart + NPROCS * sizeof(double) + 2 * sizeof(int));
 
     *proc_count = 0;
     sem_init(start_all, 1, 0);
-    sem_init(calc_done, 1, 0);
 
     gettimeofday(&ts, NULL);
     start_ts = ts.tv_sec; // Tiempo inicial
@@ -110,5 +117,6 @@ int main() {
     shmdt(shmstart);
     shmctl(shmid, IPC_RMID, NULL);
     sem_destroy(start_all);
-    sem_destroy(calc_done);
+
+    return 0;
 }

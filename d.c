@@ -44,11 +44,8 @@ void proc(int proc_num) {
 void master_proc() {
     int i;
 
-    sleep(1); // Damos un pequeño tiempo para que los procesos esclavos se preparen
-    sem_post(start_semaphore); // Activamos el semáforo para que los procesos esclavos comiencen
-
     for (i = 0; i < NPROCS; i++)
-        sem_wait(start_semaphore); // Esperamos a que todos los procesos esclavos terminen
+        sem_wait(start_semaphore); // Espera a que todos los procesos esclavos estén listos
 
     *res = 0;
 
@@ -95,6 +92,10 @@ int main() {
     if (p == 0)
         master_proc();
 
+    // Ahora activamos el semáforo para que los procesos esclavos comiencen
+    for (i = 0; i < NPROCS; i++)
+        sem_post(start_semaphore);
+
     printf("El recuento de ln(1 + x) miembros de la serie de Mercator es %d\n", SERIES_MEMBER_COUNT);
     printf("El valor del argumento x es %f\n", (double)x);
 
@@ -112,4 +113,3 @@ int main() {
     shmdt(shmstart);
     shmctl(shmid, IPC_RMID, NULL);
 }
-

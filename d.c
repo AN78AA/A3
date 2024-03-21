@@ -6,8 +6,6 @@
 #include <sys/wait.h>
 #include <sys/shm.h>
 #include <semaphore.h>
-#include <sys/mman.h>
-#include <fcntl.h>
 
 #define NPROCS 4
 #define SERIES_MEMBER_COUNT 200000
@@ -39,15 +37,12 @@ void proc(int proc_num) {
     int i;
 
     sem_wait(sem_start_all); // Esperar hasta que se inicie el cálculo
-    sums[proc_num] = 0;
 
+    sums[proc_num] = 0;
     for (i = proc_num; i < SERIES_MEMBER_COUNT; i += NPROCS)
         sums[proc_num] += get_member(i + 1, x);
 
-    sem_wait(sem_proc_count); // Aumentar el contador de procesos completados
-    (*proc_count)++;
-    sem_post(sem_proc_count);
-
+    sem_post(sem_proc_count); // Indicar que el proceso ha terminado su cálculo
     exit(0);
 }
 
@@ -62,7 +57,6 @@ void master_proc() {
         sem_wait(sem_proc_count); // Esperar a que todos los procesos hayan terminado
 
     *res = 0;
-
     for (i = 0; i < NPROCS; i++)
         *res += sums[i];
 
@@ -70,10 +64,6 @@ void master_proc() {
 }
 
 int main() {
-    long long start_ts;
-    long long stop_ts;
-    long long elapsed_time;
-    struct timeval ts;
     int i;
     int shmid;
     void *shmstart;
@@ -82,23 +72,19 @@ int main() {
     sem_proc_count = mmap(NULL, sizeof(sem_t), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     sem_start_all = mmap(NULL, sizeof(sem_t), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 
-    sem_init(sem_proc_count, 1, 1); // Inicialmente 1 proceso completo
-    sem_init(sem_start_all, 1, 0); // Inicialmente 0 procesos comenzados
+    sem_init(sem_proc_count, 1, 0); // Inicialmente, no hay procesos completados
+    sem_init(sem_start_all, 1, 0); // Inicialmente, no se ha iniciado el cálculo
 
     // Creación de la memoria compartida
-    shmid = shmget(IPC_PRIVATE, NPROCS * sizeof(double) + 2 * sizeof(int), 0666 | IPC_CREAT);
+    shmid = shmget(IPC_PRIVATE, (NPROCS * sizeof(double)) + (2 * sizeof(int)), 0666 | IPC_CREAT);
     shmstart = shmat(shmid, NULL, 0);
     sums = (double*)shmstart;
-    proc_count = (int*)(shmstart + NPROCS * sizeof(double));
-    start_all = (int*)(shmstart + NPROCS * sizeof(double) + sizeof(int));
-    res = (double*)(shmstart + NPROCS * sizeof(double) + 2 * sizeof(int));
+    proc_count = (int*)(shmstart + (NPROCS * sizeof(double)));
+    start_all = (int*)(shmstart + (NPROCS * sizeof(double)) + sizeof(int));
+    res = (double*)(shmstart + (NPROCS * sizeof(double)) + (2 * sizeof(int)));
 
     *proc_count = 0;
     *start_all = 0;
-
-    // Medición del tiempo de inicio
-    gettimeofday(&ts, NULL);
-    start_ts = ts.tv_sec;
 
     // Creación de los procesos
     for (i = 0; i < NPROCS; i++) {
@@ -115,20 +101,12 @@ int main() {
     }
 
     // Esperar a que todos los procesos terminen
-    for (int i = 0; i < NPROCS + 1; i++)
+    for (i = 0; i < NPROCS + 1; i++)
         wait(NULL);
 
-    // Medición del tiempo final
-    gettimeofday(&ts, NULL);
-    stop_ts = ts.tv_sec;
-
-    // Cálculo del tiempo de ejecución
-    elapsed_time = stop_ts - start_ts;
-
-    // Impresión del resultado y tiempo de ejecución
+    // Impresión del resultado
     printf("El recuento de ln(1 + x) miembros de la serie de Mercator es %d\n", SERIES_MEMBER_COUNT);
     printf("El valor del argumento x es %f\n", (double)x);
-    printf("Tiempo = %lld segundos\n", elapsed_time);
     printf("El resultado es %10.8f\n", *res);
     printf("Llamando a la función ln(1 + %f) = %10.8f\n", x, log(1 + x));
 
